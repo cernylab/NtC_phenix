@@ -1,0 +1,984 @@
+diff -rB --context=5 ./modules/cctbx_project/cctbx/geometry_restraints/__init__.py ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/cctbx/geometry_restraints/__init__.py
+*** ./modules/cctbx_project/cctbx/geometry_restraints/__init__.py	Tue Oct  6 07:39:43 2020
+--- ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/cctbx/geometry_restraints/__init__.py	Sun Apr 25 08:17:47 2021
+***************
+*** 4,13 ****
+--- 4,15 ----
+  import scitbx.array_family.shared # import dependency
+  import cctbx.geometry # import dependency
+  from libtbx.test_utils import approx_equal
+  from libtbx.str_utils import show_string
+  
++ import cctbx.geometry_restraints
++ 
+  import boost_adaptbx.boost.python as bp
+  from six.moves import range
+  from six.moves import zip
+  ext = bp.import_ext("cctbx_geometry_restraints_ext")
+  from cctbx_geometry_restraints_ext import *
+***************
+*** 222,241 ****
+--- 224,337 ----
+        proxies=shared_dihedral_proxy(),
+        strict_conflict_handling=strict_conflict_handling)
+  
+    def add_if_not_duplicated(self, proxy, tolerance=1.e-6):
+      assert len(proxy.i_seqs) == 4
++     ### NtC's will be dealt with separately
++     if proxy.is_ntc:
++       return True
+      proxy = proxy.sort_i_seqs()
+      tab_i_seq_0 = self.table.setdefault(proxy.i_seqs[0], {})
+      i_seqs_1_2_3 = (proxy.i_seqs[1], proxy.i_seqs[2], proxy.i_seqs[3])
+      if (i_seqs_1_2_3 not in tab_i_seq_0):
+        tab_i_seq_0[i_seqs_1_2_3] = self.proxies.size()
+        self.proxies.append(proxy)
+        self.counts.append(1)
+        return True
+      return False
+  
++   def add_if_not_duplicated_ntc(self, proxy, htPosition, tolerance=1.e-6):
++     assert len(proxy.i_seqs) == 4
++     ### NtC's will be dealt with separately
++     if not proxy.is_ntc:
++       return htPosition
++     proxy = proxy.sort_i_seqs()
++     tab_i_seq_0 = self.table.setdefault(proxy.i_seqs[0], {})
++     i_seqs_1_2_3 = (proxy.i_seqs[1], proxy.i_seqs[2], proxy.i_seqs[3])
++     if not proxy.alt_angle_ideals:
++       if (i_seqs_1_2_3 not in tab_i_seq_0):
++         ### This is a non duplicate constraint, append it
++         tab_i_seq_0[i_seqs_1_2_3] = htPosition
++         self.proxies.append(proxy)
++         self.counts.append(1)
++         htPosition=htPosition+1
++       return htPosition
++ 
++     elif len(proxy.alt_angle_ideals) == len(proxy.alt_weights):
++       print("     Now splitting constrain:")
++       print ("      weight: %2.6f" % proxy.weight )
++       print ("      angle: %2.2f" % proxy.angle_ideal )
++       if proxy.alt_angle_ideals:
++         for aaVal in proxy.alt_angle_ideals:
++           print ("      alt angle: %2.6f" % aaVal )
++       if proxy.alt_weights:
++         for awVal in proxy.alt_weights:
++           print ("      alt weight: %2.6f" % awVal )
++       print ("      periodicity: %+1.0f" % proxy.periodicity )
++       print ("      is NtC: %r" % proxy.is_ntc )
++ 
++       ### Create a new proxy with only the NON ALT values
++       p = cctbx.geometry_restraints.dihedral_proxy(
++         i_seqs=proxy.i_seqs,
++         angle_ideal=proxy.angle_ideal,
++         weight=proxy.weight,
++         origin_id=proxy.origin_id,
++         periodicity=proxy.periodicity,
++         is_ntc=proxy.is_ntc
++       )
++       if (i_seqs_1_2_3 not in tab_i_seq_0):
++         ### No such proxy exists, append it
++         tab_i_seq_0[i_seqs_1_2_3] = htPosition
++         self.proxies.append(p)
++         self.counts.append(1)
++         htPosition=htPosition+1
++       else:
++         ### There already is a proxy
++         self.proxies[tab_i_seq_0[i_seqs_1_2_3]] = p
++ 
++       print("     Created new constrain")
++       print ("      weight: %2.6f" % p.weight )
++       print ("      angle: %2.2f" % p.angle_ideal )
++       if p.alt_angle_ideals:
++         for aaVal in p.alt_angle_ideals:
++           print ("      alt angle: %2.6f" % aaVal )
++       if p.alt_weights:
++         for awVal in p.alt_weights:
++           print ("      alt weight: %2.6f" % awVal )
++       print ("      periodicity: %+1.0f" % p.periodicity )
++       print ("      is NtC: %r" % p.is_ntc )
++ 
++       ### Create a new proxies, each with a single the ALT values combination
++       for altIt in range( 0, len(proxy.alt_angle_ideals) ):
++         pTmp = cctbx.geometry_restraints.dihedral_proxy(
++           i_seqs=proxy.i_seqs,
++           angle_ideal=proxy.alt_angle_ideals[altIt],
++           weight=proxy.alt_weights[altIt],
++           origin_id=proxy.origin_id,
++           periodicity=proxy.periodicity,
++           is_ntc=proxy.is_ntc
++         )
++         tab_i_seq_0[i_seqs_1_2_3] = htPosition+altIt+1
++         self.proxies.append(pTmp)
++         self.counts.append(1)
++         htPosition=htPosition+1
++         print("     Created new constrain")
++         print ("      weight: %2.6f" % pTmp.weight )
++         print ("      angle: %2.2f" % pTmp.angle_ideal )
++         if pTmp.alt_angle_ideals:
++           for aaVal in pTmp.alt_angle_ideals:
++             print ("      alt angle: %2.6f" % aaVal )
++         if pTmp.alt_weights:
++           for awVal in pTmp.alt_weights:
++             print ("      alt weight: %2.6f" % awVal )
++         print ("      periodicity: %+1.0f" % pTmp.periodicity )
++         print ("      is NtC: %r" % pTmp.is_ntc )
++       return htPosition
++     else:
++       raise RuntimeError ( "Found ntc_change entry which has different length of alt_angles and alt_weights. This should not happen and most likely it signifies problem in the ntc constraint generation. Please report this case to the constraint generation source." )
++     return htPosition
++ 
+    def process(self, source_info, proxy, tolerance=1.e-6):
+      result = proxy_registry_process_result()
+      proxy = proxy.sort_i_seqs()
+      tab_i_seq_0 = self.table.setdefault(proxy.i_seqs[0], {})
+      i_seqs_1_2_3 = (proxy.i_seqs[1], proxy.i_seqs[2], proxy.i_seqs[3])
+diff -rB --context=5 ./modules/cctbx_project/cctbx/geometry_restraints/dihedral.h ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/cctbx/geometry_restraints/dihedral.h
+*** ./modules/cctbx_project/cctbx/geometry_restraints/dihedral.h	Tue Oct  6 07:35:13 2020
+--- ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/cctbx/geometry_restraints/dihedral.h	Sun Apr 25 08:19:04 2021
+***************
+*** 8,17 ****
+--- 8,18 ----
+  #include <boost/format.hpp>
+  
+  namespace cctbx { namespace geometry_restraints {
+  
+    typedef optional_container<af::small<double, 6> > alt_angle_ideals_type;
++   typedef optional_container<af::small<double, 6> > alt_weights_type;
+  
+    //! Grouping of indices into array of sites (i_seqs) and dihedral_params.
+    struct dihedral_proxy
+    {
+      //! Support for shared_proxy_select.
+***************
+*** 28,48 ****
+        int periodicity_=0,
+        alt_angle_ideals_type const& alt_angle_ideals_=alt_angle_ideals_type(),
+        double limit_=-1.0,
+        bool top_out_=false,
+        double slack_=0.0,
+!       unsigned char origin_id_=0)
+      :
+        i_seqs(i_seqs_),
+        angle_ideal(angle_ideal_),
+        weight(weight_),
+        periodicity(periodicity_),
+        alt_angle_ideals(alt_angle_ideals_),
+        limit(limit_),
+        top_out(top_out_),
+        slack(slack_),
+!       origin_id(origin_id_)
+      {
+        if (top_out) {
+          CCTBX_ASSERT(limit >= 0.0);
+        }
+      }
+--- 29,53 ----
+        int periodicity_=0,
+        alt_angle_ideals_type const& alt_angle_ideals_=alt_angle_ideals_type(),
+        double limit_=-1.0,
+        bool top_out_=false,
+        double slack_=0.0,
+!       unsigned char origin_id_=0,
+!       alt_weights_type const& alt_weights_=alt_weights_type(),
+!       bool is_ntc_=false )
+      :
+        i_seqs(i_seqs_),
+        angle_ideal(angle_ideal_),
+        weight(weight_),
+        periodicity(periodicity_),
+        alt_angle_ideals(alt_angle_ideals_),
+        limit(limit_),
+        top_out(top_out_),
+        slack(slack_),
+!       origin_id(origin_id_),
+!       alt_weights(alt_weights_),
+!       is_ntc(is_ntc_)
+      {
+        if (top_out) {
+          CCTBX_ASSERT(limit >= 0.0);
+        }
+      }
+***************
+*** 56,77 ****
+        int periodicity_=0,
+        alt_angle_ideals_type const& alt_angle_ideals_=alt_angle_ideals_type(),
+        double limit_=-1.0,
+        bool top_out_=false,
+        double slack_=0.0,
+!       unsigned char origin_id_=0)
+      :
+        i_seqs(i_seqs_),
+        sym_ops(sym_ops_),
+        angle_ideal(angle_ideal_),
+        weight(weight_),
+        periodicity(periodicity_),
+        alt_angle_ideals(alt_angle_ideals_),
+        limit(limit_),
+        top_out(top_out_),
+        slack(slack_),
+!       origin_id(origin_id_)
+      {
+        if ( sym_ops.get() != 0 ) {
+          CCTBX_ASSERT(sym_ops.get()->size() == i_seqs.size());
+        }
+        if (top_out) {
+--- 61,86 ----
+        int periodicity_=0,
+        alt_angle_ideals_type const& alt_angle_ideals_=alt_angle_ideals_type(),
+        double limit_=-1.0,
+        bool top_out_=false,
+        double slack_=0.0,
+!       unsigned char origin_id_=0,
+!       alt_weights_type const& alt_weights_=alt_weights_type(),
+!       bool is_ntc_=false )
+      :
+        i_seqs(i_seqs_),
+        sym_ops(sym_ops_),
+        angle_ideal(angle_ideal_),
+        weight(weight_),
+        periodicity(periodicity_),
+        alt_angle_ideals(alt_angle_ideals_),
+        limit(limit_),
+        top_out(top_out_),
+        slack(slack_),
+!       origin_id(origin_id_),
+!       alt_weights(alt_weights_),
+!       is_ntc(is_ntc_)
+      {
+        if ( sym_ops.get() != 0 ) {
+          CCTBX_ASSERT(sym_ops.get()->size() == i_seqs.size());
+        }
+        if (top_out) {
+***************
+*** 91,101 ****
+        periodicity(proxy.periodicity),
+        alt_angle_ideals(proxy.alt_angle_ideals),
+        limit(proxy.limit),
+        top_out(proxy.top_out),
+        slack(proxy.slack),
+!       origin_id(proxy.origin_id)
+      {
+        if ( sym_ops.get() != 0 ) {
+          CCTBX_ASSERT(sym_ops.get()->size() == i_seqs.size());
+        }
+        if (top_out) {
+--- 100,112 ----
+        periodicity(proxy.periodicity),
+        alt_angle_ideals(proxy.alt_angle_ideals),
+        limit(proxy.limit),
+        top_out(proxy.top_out),
+        slack(proxy.slack),
+!       origin_id(proxy.origin_id),
+!       alt_weights(proxy.alt_weights),
+!       is_ntc(proxy.is_ntc)
+      {
+        if ( sym_ops.get() != 0 ) {
+          CCTBX_ASSERT(sym_ops.get()->size() == i_seqs.size());
+        }
+        if (top_out) {
+***************
+*** 107,117 ****
+      scale_weight(
+        double factor) const
+      {
+        return dihedral_proxy(
+          i_seqs, sym_ops, angle_ideal, weight*factor,
+!         periodicity, alt_angle_ideals, limit, top_out, slack, origin_id);
+      }
+  
+      //! Sorts i_seqs such that i_seq[0] < i_seq[3] and i_seq[1] < i_seq[2].
+      dihedral_proxy
+      sort_i_seqs() const
+--- 118,128 ----
+      scale_weight(
+        double factor) const
+      {
+        return dihedral_proxy(
+          i_seqs, sym_ops, angle_ideal, weight*factor,
+!         periodicity, alt_angle_ideals, limit, top_out, slack, origin_id, alt_weights, is_ntc );
+      }
+  
+      //! Sorts i_seqs such that i_seq[0] < i_seq[3] and i_seq[1] < i_seq[2].
+      dihedral_proxy
+      sort_i_seqs() const
+***************
+*** 169,178 ****
+--- 180,193 ----
+      //! Use top-out function or not for residual/gradient
+      bool top_out;
+      //! Parameter.
+      double slack;
+      unsigned char origin_id;
++     //! Optional array of alternative angle_ideal weights.
++     alt_weights_type alt_weights;
++     //! Switch variable allowing ntc_delete to be applied on all restraints instead of only edits file supplied restraints.
++     bool is_ntc;
+    };
+  
+    //! Residual and gradient calculations for dihedral %angle restraint.
+    /*! angle_model is defined as the %angle between the plane through
+        the three points sites[0],sites[1],sites[2] and the plane through
+***************
+*** 200,219 ****
+          double weight_,
+          int periodicity_=0,
+          alt_angle_ideals_type const& alt_angle_ideals_=alt_angle_ideals_type(),
+          double limit_=-1.0,
+          bool top_out_=false,
+!         double slack_=0.0)
+        :
+          sites(sites_),
+          angle_ideal(angle_ideal_),
+          weight(weight_),
+          periodicity(periodicity_),
+          alt_angle_ideals(alt_angle_ideals_),
+          limit(limit_),
+          top_out(top_out_),
+!         slack(slack_)
+        {
+          init_angle_model();
+        }
+  
+        /*! \brief Coordinates are copied from sites_cart according to
+--- 215,238 ----
+          double weight_,
+          int periodicity_=0,
+          alt_angle_ideals_type const& alt_angle_ideals_=alt_angle_ideals_type(),
+          double limit_=-1.0,
+          bool top_out_=false,
+!         double slack_=0.0,
+!         alt_weights_type const& alt_weights_=alt_weights_type(),
+!         bool is_ntc_=false )
+        :
+          sites(sites_),
+          angle_ideal(angle_ideal_),
+          weight(weight_),
+          periodicity(periodicity_),
+          alt_angle_ideals(alt_angle_ideals_),
+          limit(limit_),
+          top_out(top_out_),
+!         slack(slack_),
+!         alt_weights(alt_weights_),
+!         is_ntc(is_ntc_)
+        {
+          init_angle_model();
+        }
+  
+        /*! \brief Coordinates are copied from sites_cart according to
+***************
+*** 227,237 ****
+          weight(proxy.weight),
+          periodicity(proxy.periodicity),
+          alt_angle_ideals(proxy.alt_angle_ideals),
+          limit(proxy.limit),
+          top_out(proxy.top_out),
+!         slack(proxy.slack)
+        {
+          for(int i=0;i<4;i++) {
+            std::size_t i_seq = proxy.i_seqs[i];
+            CCTBX_ASSERT(i_seq < sites_cart.size());
+            sites[i] = sites_cart[i_seq];
+--- 246,258 ----
+          weight(proxy.weight),
+          periodicity(proxy.periodicity),
+          alt_angle_ideals(proxy.alt_angle_ideals),
+          limit(proxy.limit),
+          top_out(proxy.top_out),
+!         slack(proxy.slack),
+!         alt_weights(proxy.alt_weights),
+!         is_ntc(proxy.is_ntc)
+        {
+          for(int i=0;i<4;i++) {
+            std::size_t i_seq = proxy.i_seqs[i];
+            CCTBX_ASSERT(i_seq < sites_cart.size());
+            sites[i] = sites_cart[i_seq];
+***************
+*** 252,262 ****
+          weight(proxy.weight),
+          periodicity(proxy.periodicity),
+          alt_angle_ideals(proxy.alt_angle_ideals),
+          limit(proxy.limit),
+          top_out(proxy.top_out),
+!         slack(proxy.slack)
+        {
+          for(int i=0;i<4;i++) {
+            std::size_t i_seq = proxy.i_seqs[i];
+            CCTBX_ASSERT(i_seq < sites_cart.size());
+            sites[i] = sites_cart[i_seq];
+--- 273,285 ----
+          weight(proxy.weight),
+          periodicity(proxy.periodicity),
+          alt_angle_ideals(proxy.alt_angle_ideals),
+          limit(proxy.limit),
+          top_out(proxy.top_out),
+!         slack(proxy.slack),
+!         alt_weights(proxy.alt_weights),
+!         is_ntc(proxy.is_ntc)
+        {
+          for(int i=0;i<4;i++) {
+            std::size_t i_seq = proxy.i_seqs[i];
+            CCTBX_ASSERT(i_seq < sites_cart.size());
+            sites[i] = sites_cart[i_seq];
+***************
+*** 511,520 ****
+--- 534,547 ----
+        double limit;
+        //! Use top-out function or notabilities
+        bool top_out;
+        //! Parameter (usually as passed to the constructor).
+        double slack;
++       //! Optional array of alternative angle_ideal weights.
++       alt_weights_type alt_weights;
++       //! Switch variable allowing the ntc restraint actions to be treated differently from other restraint actions.
++       bool is_ntc;
+        //! false in singular situations.
+        bool have_angle_model;
+      public:
+        //! Value of the dihedral %angle formed by the sites.
+        double angle_model;
+***************
+*** 537,559 ****
+          delta = angle_delta_deg(angle_model, angle_ideal, periodicity);
+          if (alt_angle_ideals) {
+            using scitbx::fn::absolute;
+            alt_angle_ideals_type::value_type& ai = *alt_angle_ideals;
+            delta = angle_delta_deg(angle_model, angle_ideal, periodicity);
+!           for(unsigned i_ai=0;i_ai<ai.size();i_ai++){
+!             double a = ai[i_ai];
+!             if (absolute(a) > 360.){
+                throw std::runtime_error((
+!                 boost::format(
+!                   " dihedral geometry restraint: invalid alt_angle_ideal:"
+!                   " range = 0-360, alt = %f") % a).str());
+              }
+!             if (a < 0) a += 360;
+!             double delta_i = angle_delta_deg(
+!               angle_model, a);
+!             if (absolute(delta) > absolute(delta_i)){
+!               delta = delta_i;
+              }
+            }
+          }
+        }
+    };
+--- 564,617 ----
+          delta = angle_delta_deg(angle_model, angle_ideal, periodicity);
+          if (alt_angle_ideals) {
+            using scitbx::fn::absolute;
+            alt_angle_ideals_type::value_type& ai = *alt_angle_ideals;
+            delta = angle_delta_deg(angle_model, angle_ideal, periodicity);
+!             
+!           if (alt_weights) {
+!             // If alt weights have the same length as alt_angles and at the same time any alt_angle has lower
+!             // delta than the angle supplied, the delta will be set be this "lowest delta angle" AND the weight
+!             // will be set to the appropriate weight as well.
+!             alt_weights_type::value_type& aw = *alt_weights;
+!             if ( aw.size() != ai.size() ) {
+                throw std::runtime_error((
+!               boost::format(
+!                 " dihedral geometry restraint: invalid alt_weights length:"
+!                 " angles size = %i, weights size = %i") % ai.size() % aw.size() ).str() );
+              }
+!             for(unsigned i_ai=0;i_ai<ai.size();i_ai++){
+!               double a = ai[i_ai];
+!               if (absolute(a) > 360.){
+!                 throw std::runtime_error((
+!                   boost::format(
+!                     " dihedral geometry restraint: invalid alt_angle_ideal:"
+!                     " range = 0-360, alt = %f") % a).str());
+!               }
+!               if (a < 0) a += 360;
+!               double delta_i = angle_delta_deg(
+!                 angle_model, a);
+!               if (absolute(delta) > absolute(delta_i)){
+!                 delta = delta_i;
+!                 weight = aw[i_ai];
+!               }
+!             }
+!           }
+!           else {
+!             for(unsigned i_ai=0;i_ai<ai.size();i_ai++){
+!               double a = ai[i_ai];
+!               if (absolute(a) > 360.){
+!                 throw std::runtime_error((
+!                   boost::format(
+!                     " dihedral geometry restraint: invalid alt_angle_ideal:"
+!                     " range = 0-360, alt = %f") % a).str());
+!               }
+!               if (a < 0) a += 360;
+!               double delta_i = angle_delta_deg(
+!                 angle_model, a);
+!               if (absolute(delta) > absolute(delta_i)){
+!                 delta = delta_i;
+!               }
+              }
+            }
+          }
+        }
+    };
+diff -rB --context=5 ./modules/cctbx_project/cctbx/geometry_restraints/dihedral_bpl.cpp ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/cctbx/geometry_restraints/dihedral_bpl.cpp
+*** ./modules/cctbx_project/cctbx/geometry_restraints/dihedral_bpl.cpp	Tue Oct  6 07:35:13 2020
+--- ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/cctbx/geometry_restraints/dihedral_bpl.cpp	Sun Apr 25 08:19:04 2021
+***************
+*** 28,38 ****
+          self.periodicity,
+          self.alt_angle_ideals,
+          self.limit,
+          self.top_out,
+          self.slack,
+!         self.origin_id
+          );
+      }
+  
+      static void
+      wrap()
+--- 28,40 ----
+          self.periodicity,
+          self.alt_angle_ideals,
+          self.limit,
+          self.top_out,
+          self.slack,
+!         self.origin_id,
+!         self.alt_weights,
+!         self.is_ntc
+          );
+      }
+  
+      static void
+      wrap()
+***************
+*** 42,67 ****
+        typedef default_call_policies dcp;
+        object none;
+        class_<w_t>("dihedral_proxy", no_init)
+          .def(init<
+            af::tiny<unsigned, 4> const&, double, double,
+!           int, alt_angle_ideals_type, double, bool, double, unsigned char>((
+              arg("i_seqs"), arg("angle_ideal"), arg("weight"),
+              arg("periodicity")=0, arg("alt_angle_ideals")=none,
+              arg("limit")=-1.0, arg("top_out")=false,
+!             arg("slack")=0.0, arg("origin_id")=0)))
+          .def(init<
+            af::tiny<unsigned, 4> const&,
+            optional_container<af::shared<sgtbx::rt_mx> > const&,
+            double,
+            double,
+            int,
+!           alt_angle_ideals_type,double,bool,double, unsigned char>((
+              arg("i_seqs"), arg("sym_ops"), arg("angle_ideal"), arg("weight"),
+              arg("periodicity")=0, arg("alt_angle_ideals")=none,
+              arg("limit")=-1.0, arg("top_out")=false, arg("slack")=0.0,
+!             arg("origin_id")=0)))
+          .def(init<af::tiny<unsigned, 4> const&, w_t const&>((
+            arg("i_seqs"), arg("proxy"))))
+          .def("scale_weight", &w_t::scale_weight, (arg("factor")))
+          .def("sort_i_seqs", &w_t::sort_i_seqs)
+          .add_property("i_seqs", make_getter(&w_t::i_seqs, rbv()))
+--- 44,69 ----
+        typedef default_call_policies dcp;
+        object none;
+        class_<w_t>("dihedral_proxy", no_init)
+          .def(init<
+            af::tiny<unsigned, 4> const&, double, double,
+!           int, alt_angle_ideals_type, double, bool, double, unsigned char, alt_weights_type, bool>((
+              arg("i_seqs"), arg("angle_ideal"), arg("weight"),
+              arg("periodicity")=0, arg("alt_angle_ideals")=none,
+              arg("limit")=-1.0, arg("top_out")=false,
+!             arg("slack")=0.0, arg("origin_id")=0, arg("alt_weights")=none, arg("is_ntc")=false)))
+          .def(init<
+            af::tiny<unsigned, 4> const&,
+            optional_container<af::shared<sgtbx::rt_mx> > const&,
+            double,
+            double,
+            int,
+!           alt_angle_ideals_type,double,bool,double, unsigned char, alt_weights_type, bool>((
+              arg("i_seqs"), arg("sym_ops"), arg("angle_ideal"), arg("weight"),
+              arg("periodicity")=0, arg("alt_angle_ideals")=none,
+              arg("limit")=-1.0, arg("top_out")=false, arg("slack")=0.0,
+!             arg("origin_id")=0, arg("alt_weights")=none, arg("is_ntc")=false)))
+          .def(init<af::tiny<unsigned, 4> const&, w_t const&>((
+            arg("i_seqs"), arg("proxy"))))
+          .def("scale_weight", &w_t::scale_weight, (arg("factor")))
+          .def("sort_i_seqs", &w_t::sort_i_seqs)
+          .add_property("i_seqs", make_getter(&w_t::i_seqs, rbv()))
+***************
+*** 73,82 ****
+--- 75,88 ----
+          .def_readwrite("slack", &w_t::slack)
+          .def_readwrite("origin_id", &w_t::origin_id)
+          .add_property("alt_angle_ideals",
+            make_getter(&w_t::alt_angle_ideals, rbv()),
+            make_setter(&w_t::alt_angle_ideals, dcp()))
++         .add_property("alt_weights",
++           make_getter(&w_t::alt_weights, rbv()),
++           make_setter(&w_t::alt_weights, dcp()))
++         .def_readwrite("is_ntc", &w_t::is_ntc)
+          .add_property("sym_ops", make_getter(&w_t::sym_ops, rbv()))
+          .def_pickle(dihedral_proxy_wrappers())
+          ;
+        {
+          typedef return_internal_reference<> rir;
+***************
+*** 133,143 ****
+          self.weight,
+          self.periodicity,
+          self.alt_angle_ideals,
+          self.limit,
+          self.top_out,
+!         self.slack
+          );
+      }
+  
+      static void
+      wrap()
+--- 139,150 ----
+          self.weight,
+          self.periodicity,
+          self.alt_angle_ideals,
+          self.limit,
+          self.top_out,
+!         self.slack,
+!         self.alt_weights
+          );
+      }
+  
+      static void
+      wrap()
+***************
+*** 147,160 ****
+        typedef default_call_policies dcp;
+        object none;
+        class_<w_t>("dihedral", no_init)
+          .def(init<
+            af::tiny<scitbx::vec3<double>, 4> const&, double, double,
+!           int, alt_angle_ideals_type const&, double, bool, double>((
+              arg("sites"), arg("angle_ideal"), arg("weight"),
+              arg("periodicity")=0, arg("alt_angle_ideals")=none,
+!             arg("limit")=-1.0, arg("top_out")=false, arg("slack")=0.0)))
+          .def(init<
+            af::const_ref<scitbx::vec3<double> > const&,
+            dihedral_proxy const&>((
+              arg("sites_cart"), arg("proxy"))))
+          .def(init<uctbx::unit_cell const&,
+--- 154,167 ----
+        typedef default_call_policies dcp;
+        object none;
+        class_<w_t>("dihedral", no_init)
+          .def(init<
+            af::tiny<scitbx::vec3<double>, 4> const&, double, double,
+!           int, alt_angle_ideals_type const&, double, bool, double, alt_weights_type const&, bool>((
+              arg("sites"), arg("angle_ideal"), arg("weight"),
+              arg("periodicity")=0, arg("alt_angle_ideals")=none,
+!             arg("limit")=-1.0, arg("top_out")=false, arg("slack")=0.0, arg("alt_weights")=none, arg("is_ntc")=false)))
+          .def(init<
+            af::const_ref<scitbx::vec3<double> > const&,
+            dihedral_proxy const&>((
+              arg("sites_cart"), arg("proxy"))))
+          .def(init<uctbx::unit_cell const&,
+***************
+*** 169,181 ****
+--- 176,192 ----
+          .def_readonly("top_out", &w_t::top_out)
+          .def_readonly("slack", &w_t::slack)
+          .add_property("alt_angle_ideals",
+            make_getter(&w_t::alt_angle_ideals, rbv()),
+            make_setter(&w_t::alt_angle_ideals, dcp()))
++         .add_property("alt_weights",
++           make_getter(&w_t::alt_weights, rbv()),
++           make_setter(&w_t::alt_weights, dcp()))
+          .def_readonly("have_angle_model", &w_t::have_angle_model)
+          .def_readonly("angle_model", &w_t::angle_model)
+          .def_readonly("delta", &w_t::delta)
++         .def_readonly("is_ntc", &w_t::is_ntc)
+          .def("residual", &w_t::residual)
+          .def("gradients", &w_t::gradients, (arg("epsilon")=1e-100))
+          .def_pickle(dihedral_wrappers())
+          ;
+      }
+diff -rB --context=5 ./modules/cctbx_project/mmtbx/monomer_library/pdb_interpretation.py ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/mmtbx/monomer_library/pdb_interpretation.py
+*** ./modules/cctbx_project/mmtbx/monomer_library/pdb_interpretation.py	Thu Nov  5 07:00:34 2020
+--- ../phenix-installer-1.19.2-4158-mac-intel-osx-x86_64_latest/modules/cctbx_project/mmtbx/monomer_library/pdb_interpretation.py	Sun Apr 25 08:19:04 2021
+***************
+*** 566,576 ****
+    .optional = True
+    .multiple = True
+    .short_caption = Dihedral
+    .style = hidden
+  {
+!   action = *add delete change
+      .type = choice
+    atom_selection_1 = None
+      .type = atom_selection
+      .input_size = 400
+    atom_selection_2 = None
+--- 566,576 ----
+    .optional = True
+    .multiple = True
+    .short_caption = Dihedral
+    .style = hidden
+  {
+!   action = *add delete change ntc_change ntc_delete
+      .type = choice
+    atom_selection_1 = None
+      .type = atom_selection
+      .input_size = 400
+    atom_selection_2 = None
+***************
+*** 586,595 ****
+--- 586,597 ----
+      .type = float
+    alt_angle_ideals = None
+      .type = floats
+    sigma = None
+      .type = float
++   alt_sigmas = None
++     .type = floats
+    periodicity = 1
+      .type = int
+  }
+  planarity
+    .optional = True
+***************
+*** 4610,4639 ****
+      else:
+        special_position_indices = self.special_position_indices
+      print("  Custom dihedrals:", file=log)
+      atoms = self.pdb_atoms
+      sel_attrs = ["atom_selection_"+n for n in ["1", "2", "3", "4"]]
+      for dihedral in params.dihedral:
+        def show_atom_selections():
+          print(get_atom_selections_text(), end='', file=log)
+        def get_atom_selections_text():
+          txt = ""
+          for attr in sel_attrs:
+            txt += "      %s = %s\n" % (attr, show_string(getattr(dihedral, attr, None)))
+          return txt
+!       if (dihedral.angle_ideal is None):
+          print("    Warning: Ignoring dihedral with angle_ideal = None:", file=log)
+          show_atom_selections()
+!       elif (dihedral.sigma is None):
+          print("    Warning: Ignoring dihedral with sigma = None:", file=log)
+          show_atom_selections()
+          print("      angle_ideal = %.6g" % dihedral.angle_ideal, file=log)
+!       elif (dihedral.sigma is None or dihedral.sigma <= 0):
+          print("    Warning: Ignoring dihedral with sigma <= 0:", file=log)
+          show_atom_selections()
+          print("      angle_ideal = %.6g" % dihedral.angle_ideal, file=log)
+          print("      sigma = %.6g" % dihedral.sigma, file=log)
+        elif dihedral.action == "change":
+          i_seqs = self.phil_atom_selections_as_i_seqs(
+            cache=sel_cache, scope_extract=dihedral, sel_attrs=sel_attrs)
+          i_proxy = self.geometry_proxy_registries.dihedral.lookup_i_proxy(i_seqs)[0]
+          if i_proxy is None:
+--- 4612,4776 ----
+      else:
+        special_position_indices = self.special_position_indices
+      print("  Custom dihedrals:", file=log)
+      atoms = self.pdb_atoms
+      sel_attrs = ["atom_selection_"+n for n in ["1", "2", "3", "4"]]
++     noCustProcDihedrals=0
+      for dihedral in params.dihedral:
++       noCustProcDihedrals=noCustProcDihedrals+1
+        def show_atom_selections():
+          print(get_atom_selections_text(), end='', file=log)
+        def get_atom_selections_text():
+          txt = ""
+          for attr in sel_attrs:
+            txt += "      %s = %s\n" % (attr, show_string(getattr(dihedral, attr, None)))
+          return txt
+!       if (dihedral.angle_ideal is None) and ( dihedral.action != "ntc_delete" ):
+          print("    Warning: Ignoring dihedral with angle_ideal = None:", file=log)
+          show_atom_selections()
+!       elif (dihedral.sigma is None) and ( dihedral.action != "ntc_delete" ):
+          print("    Warning: Ignoring dihedral with sigma = None:", file=log)
+          show_atom_selections()
+          print("      angle_ideal = %.6g" % dihedral.angle_ideal, file=log)
+!       elif (dihedral.sigma is None or dihedral.sigma <= 0) and ( dihedral.action != "ntc_delete" ):
+          print("    Warning: Ignoring dihedral with sigma <= 0:", file=log)
+          show_atom_selections()
+          print("      angle_ideal = %.6g" % dihedral.angle_ideal, file=log)
+          print("      sigma = %.6g" % dihedral.sigma, file=log)
++       elif dihedral.action == "ntc_change":
++         i_seqs = self.phil_atom_selections_as_i_seqs(
++           cache=sel_cache, scope_extract=dihedral, sel_attrs=sel_attrs)
++         i_proxy = self.geometry_proxy_registries.dihedral.lookup_i_proxy(i_seqs)[0]
++         if i_proxy is not None:
++           ### In existence, remove all current info and then add new
++           ### Check if the deleted dihedral contrain is not ntc - this would mean error in ntc constrain generation
++           if self.geometry_proxy_registries.dihedral.proxies[i_proxy].is_ntc:
++             print("    Problem in dihedral constraint:", file=log)
++             for i,i_seq in enumerate(i_seqs):
++               print("      atom %d:" % (i+1), atoms[i_seq].quote(), end='\n', file=log)
++             raise RuntimeError ( "Found ntc_change entry for already existing ntc_change constrain. This should not happen and most likely it signifies problem in the ntc constraint generation. Please report this case to the constraint generation source." )
++           ### Print the log info
++           a_proxy = self.geometry_proxy_registries.dihedral.proxies[i_proxy]
++           print("    changed the values of dihedral constraint:", file=log)
++           for i,i_seq in enumerate(self.geometry_proxy_registries.dihedral.proxies[i_proxy].i_seqs):
++             print("      atom %d:" % (i+1), atoms[i_seq].quote(), end='\n', file=log)
++           print("     from:", file=log)
++           print ("      sigma: %2.6f" % geometry_restraints.weight_as_sigma(weight=a_proxy.weight), file=log )
++           print ("      angle: %2.2f" % a_proxy.angle_ideal, file=log )
++           if a_proxy.alt_angle_ideals:
++             for aaVal in a_proxy.alt_angle_ideals:
++               print ("      alt angle: %2.6f" % aaVal, file=log )
++           if a_proxy.alt_weights:
++             for awVal in a_proxy.alt_sigmas:
++               print ("      alt sigma: %2.6f" % geometry_restraints.weight_as_sigma(weight=awVal), file=log )
++           print ("      periodicity: %+1.0f" % a_proxy.periodicity, file=log )
++           print ("      is NtC: %r" % a_proxy.is_ntc, file=log )
++           ### Remove all current info and then add new
++           if dihedral.alt_sigmas:
++             alts_iter=0
++             for alts in dihedral.alt_sigmas:
++               dihedral.alt_sigmas[alts_iter]=geometry_restraints.sigma_as_weight(sigma=alts)
++               alts_iter=alts_iter+1
++           a_proxy.angle_ideal=dihedral.angle_ideal
++           a_proxy.weight = geometry_restraints.sigma_as_weight(sigma=dihedral.sigma)
++           a_proxy.periodicity = dihedral.periodicity
++           a_proxy.alt_angle_ideals = dihedral.alt_angle_ideals
++           a_proxy.alt_weights = dihedral.alt_sigmas
++           a_proxy.origin_id=origin_ids.get_origin_id('edits')
++           a_proxy.is_ntc=True
++           ### Print the value change info into the log
++           print("     to:", file=log)
++           print ("      sigma: %2.6f" % geometry_restraints.weight_as_sigma(weight=a_proxy.weight), file=log )
++           print ("      angle: %2.2f" % a_proxy.angle_ideal, file=log )
++           if a_proxy.alt_angle_ideals:
++             for aaVal in a_proxy.alt_angle_ideals:
++               print ("      alt angle: %2.6f" % aaVal, file=log )
++           if a_proxy.alt_weights:
++             for awVal in a_proxy.alt_weights:
++               print ("      alt sigma: %2.6f" % geometry_restraints.weight_as_sigma(weight=awVal), file=log )
++           print ("      periodicity: %+1.0f" % a_proxy.periodicity, file=log )
++           print ("      is NtC: %r" % a_proxy.is_ntc, file=log )
++         else:
++           ### Not in existece, create
++           if dihedral.alt_sigmas:
++             alts_iter=0
++             for alts in dihedral.alt_sigmas:
++               dihedral.alt_sigmas[alts_iter]=geometry_restraints.sigma_as_weight(sigma=alts)
++               alts_iter=alts_iter+1
++           p = geometry_restraints.dihedral_proxy(
++             i_seqs=i_seqs,
++             angle_ideal=dihedral.angle_ideal,
++             alt_angle_ideals=dihedral.alt_angle_ideals,
++             weight=geometry_restraints.sigma_as_weight(sigma=dihedral.sigma),
++             origin_id=origin_ids.get_origin_id('edits'),
++             periodicity=dihedral.periodicity,
++             alt_weights=dihedral.alt_sigmas,
++             is_ntc=True
++           )
++           a = geometry_restraints.dihedral(
++             sites_cart=self.sites_cart,
++             proxy=p)
++           print("    added new dihedral constraint:", file=log)
++           n_special = 0
++           for i,i_seq in enumerate(p.i_seqs):
++             print("      atom %d:" % (i+1), atoms[i_seq].quote(), end=' ', file=log)
++             if (i_seq in special_position_indices):
++               n_special += 1
++               print("# SPECIAL POSITION", end=' ', file=log)
++             print(file=log)
++           print("      angle_model: %7.2f" % a.angle_model, file=log)
++           print("      angle_ideal: %7.2f" % a.angle_ideal, file=log)
++           if a.alt_angle_ideals:
++             for aaVal in a.alt_angle_ideals:
++               print ("      alt angle ideal: %2.6f" % aaVal, file=log )
++           if a.alt_weights:
++             for awVal in a.alt_weights:
++               print ("      alt sigma: %2.6f" % geometry_restraints.weight_as_sigma(weight=awVal), file=log )
++           print("      ideal - model:  %7.2f" % a.delta, file=log)
++           print("      sigma: %.6g" % \
++             geometry_restraints.weight_as_sigma(weight=a.weight), file=log)
++           print("      periodicity: %+1.0f" % a.periodicity, file=log )
++           print("      is NtC: %r" % a.is_ntc, file=log )
++           if (n_special != 0):
++             raise Sorry(
++               "Custom dihedral involves %d special position%s:\n"
++               "  Please inspect the output for details."
++                 % plural_s(n_special))
++           result.append(p)
++       elif dihedral.action == "ntc_delete":
++         i_seqs = self.phil_atom_selections_as_i_seqs(
++             cache=sel_cache, scope_extract=dihedral, sel_attrs=sel_attrs)
++         i_proxy = self.geometry_proxy_registries.dihedral.lookup_i_proxy(i_seqs)[0]
++         if i_proxy is not None:
++           ### Check if the deleted dihedral contrain is not ntc - this would mean error in ntc constrain generation
++           if self.geometry_proxy_registries.dihedral.proxies[i_proxy].is_ntc:
++             print("    Problem in dihedral constraint:", file=log)
++             for i,i_seq in enumerate(p.i_seqs):
++               print("      atom %d:" % (i+1), atoms[i_seq].quote(), end='\n', file=log)
++             raise RuntimeError ( "Found ntc_delete entry for ntc_change constrain. This should not happen and most likely it signifies problem in the ntc constraint generation. Please report this case to the constraint generation source." )
++           ### Print the deletion info into the log
++           print("    deleted dihedral constraint:", file=log)
++           for i,i_seq in enumerate(self.geometry_proxy_registries.dihedral.proxies[i_proxy].i_seqs):
++             print("      atom %d:" % (i+1), atoms[i_seq].quote(), end='\n', file=log)
++           ### This proxy needs to be removed from the original proxies list as well as from the search table
++           del self.geometry_proxy_registries.dihedral.proxies[i_proxy]
++           del self.geometry_proxy_registries.dihedral.counts[i_proxy]
++           del self.geometry_proxy_registries.dihedral.source_labels[i_proxy]
++           del self.geometry_proxy_registries.dihedral.source_n_expected_atoms[i_proxy]
++           ### Moreover, the table needs to be updated, so that the search indices would point to new indices
++           ### created by removing an entry before the index.
++           newDict = dict()
++           for key, val in self.geometry_proxy_registries.dihedral.table.items():
++             for k2, v2 in val.items():
++               if k2 != (min(i_seqs[1],i_seqs[2]), max(i_seqs[1],i_seqs[2]), max(i_seqs[0],i_seqs[3])):
++                 if v2 > i_proxy:
++                   v2 = v2-1
++                 if key in newDict:
++                   newDict[key].update({ k2:v2 })
++                 else:
++                   newDict[key] = { k2:v2 }
++           self.geometry_proxy_registries.dihedral.table = newDict
+        elif dihedral.action == "change":
+          i_seqs = self.phil_atom_selections_as_i_seqs(
+            cache=sel_cache, scope_extract=dihedral, sel_attrs=sel_attrs)
+          i_proxy = self.geometry_proxy_registries.dihedral.lookup_i_proxy(i_seqs)[0]
+          if i_proxy is None:
+***************
+*** 4679,4689 ****
+            raise Sorry(
+              "Custom dihedral involves %d special position%s:\n"
+              "  Please inspect the output for details."
+                % plural_s(n_special))
+          result.append(p)
+!     print("    Total number of custom dihedrals:", len(result), file=log)
+      return result
+  
+    def process_geometry_restraints_edits_planarity(self,
+                                                    sel_cache,
+                                                    params,
+--- 4816,4828 ----
+            raise Sorry(
+              "Custom dihedral involves %d special position%s:\n"
+              "  Please inspect the output for details."
+                % plural_s(n_special))
+          result.append(p)
+!     print("    Total number of custom dihedrals added    :", len(result), file=log)
+!     print("    Total number of custom dihedrals changed  :", noCustProcDihedrals-len(result), file=log)
+!     print("    Total number of custom dihedrals processed:", noCustProcDihedrals, file=log)
+      return result
+  
+    def process_geometry_restraints_edits_planarity(self,
+                                                    sel_cache,
+                                                    params,
+***************
+*** 5245,5254 ****
+--- 5384,5398 ----
+            not_added_proxies.append(proxy)
+        for proxy in processed_edits.dihedral_proxies:
+          added = self.geometry_proxy_registries.dihedral.add_if_not_duplicated(proxy=proxy)
+          if not added:
+            not_added_proxies.append(proxy)
++       htPos=self.geometry_proxy_registries.dihedral.proxies.size()
++       for proxy in self.geometry_proxy_registries.dihedral.proxies:
++         htPos = self.geometry_proxy_registries.dihedral.add_if_not_duplicated_ntc(proxy=proxy,htPosition=htPos)
++       for proxy in processed_edits.dihedral_proxies:
++        htPos = self.geometry_proxy_registries.dihedral.add_if_not_duplicated_ntc(proxy=proxy,htPosition=htPos)
+        for proxy in processed_edits.planarity_proxies:
+          added = self.geometry_proxy_registries.planarity.add_if_not_duplicated(proxy=proxy)
+          if not added:
+            not_added_proxies.append(proxy)
+        for proxy in processed_edits.parallelity_proxies:
